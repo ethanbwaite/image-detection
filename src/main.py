@@ -27,8 +27,7 @@ def interpolate_color(confidence, min_confidence=0.9, max_confidence=1.0):
     return (b, g, r)
 
 # Define the function to detect objects in an image using the YOLOv5 model
-def detect_objects(image):
-    # Get original image dimensions for drawing boxes
+def detect_objects(image, detect_objects=True):
     image_width, image_height, image_channels = image.shape
     print(image_width, image_height)
     resized_width, resized_height = 640, 360
@@ -36,56 +35,59 @@ def detect_objects(image):
     scale_factor_x = image_width / resized_width
     scale_factor_y = image_height / resized_height
 
-    # Resize the image to the input size of the YOLOv5 model
-    resized_image = cv2.resize(image, (resized_width, resized_height))
+    if detect_objects:
+        # Get original image dimensions for drawing boxes
 
-    # Convert the image to RGB format and pass it through the feature extractor
-    inputs = feature_extractor(images=resized_image[:, :, ::-1], return_tensors="pt", image_size=(resized_width, resized_height))
+        # Resize the image to the input size of the YOLOv5 model
+        resized_image = cv2.resize(image, (resized_width, resized_height))
 
-    # Use the object detection model to make predictions on the input image
-    outputs = model(**inputs)
-    results = feature_extractor.post_process_object_detection(outputs, threshold=confidence_threshold)[
-        0
-    ]
-    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
-        box_rounded = [round(i, 2) for i in box.tolist()]
-        label_text = model.config.id2label[label.item()]
-        print(
-            f"Detected {label_text} with confidence "
-            f"{round(score.item(), 3)} at location {box_rounded}"
-        )
+        # Convert the image to RGB format and pass it through the feature extractor
+        inputs = feature_extractor(images=resized_image[:, :, ::-1], return_tensors="pt", image_size=(resized_width, resized_height))
 
-        x1, y1, x2, y2 = box
-        x1, y1 = int(x1 * resized_width), int(y1 * resized_height)
-        x2, y2 = int(x2 * resized_width), int(y2 * resized_height)
-        print(x1, y1, x2, y2)
+        # Use the object detection model to make predictions on the input image
+        outputs = model(**inputs)
+        results = feature_extractor.post_process_object_detection(outputs, threshold=confidence_threshold)[
+            0
+        ]
+        for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+            box_rounded = [round(i, 2) for i in box.tolist()]
+            label_text = model.config.id2label[label.item()]
+            print(
+                f"Detected {label_text} with confidence "
+                f"{round(score.item(), 3)} at location {box_rounded}"
+            )
 
-        color = interpolate_color(score.item(), min_confidence=confidence_threshold)
-        thickness = 2
+            x1, y1, x2, y2 = box
+            x1, y1 = int(x1 * resized_width), int(y1 * resized_height)
+            x2, y2 = int(x2 * resized_width), int(y2 * resized_height)
+            print(x1, y1, x2, y2)
 
-        cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
-        cv2.putText(image, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
+            color = interpolate_color(score.item(), min_confidence=confidence_threshold)
+            thickness = 2
 
-    return image
+            cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
+            cv2.putText(image, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
+            return image
+
+    return cv2.resize(image, (resized_width, resized_height))
 
 
 ##################################################
-inference = False
+detect_objects = False
 while True:
     # Read a frame from the webcam
     ret, frame = cap.read()
     image = frame
     # Detect objects in the frame using the YOLOv5 model
-    if inference:
-        image = detect_objects(frame)
+    image = detect_objects(frame, detect_objects)
 
     cv2.imshow('Object Detection', image)
 
     if cv2.waitKey(1) & 0xFF == ord('a'):
-        inference = True
-        
+        detect_objects = True
+
     if cv2.waitKey(1) & 0xFF == ord('z'):
-        inference = False
+        detect_objects = False
 
     # Exit if 'q' pressed
     if cv2.waitKey(1) & 0xFF == ord('q'):
