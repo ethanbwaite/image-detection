@@ -3,7 +3,9 @@ from transformers import YolosImageProcessor, YolosForObjectDetection
 import sys
 
 # Init webcam video capture
-cap = cv2.VideoCapture(sys.argv[1])
+selected_camera = input(f"Enter the ID of the camera to use (0-{camera_count-1}): ")\
+
+cap = cv2.VideoCapture(selected_camera)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
