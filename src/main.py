@@ -79,7 +79,10 @@ while True:
     ret, frame = cap.read()
     image = frame
     # Detect objects in the frame using the YOLOv5 model
-    image = detect_objects(frame, should_detect_objects)
+    if ret:
+        image = detect_objects(frame, should_detect_objects)
+    else:
+        print("Error could not read frame.")
 
     cv2.imshow('Object Detection', image)
 
