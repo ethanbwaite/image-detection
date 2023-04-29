@@ -9,37 +9,43 @@ class VideoServer:
     def __init__(self, host, port):
         self.host = host
         self.port = port
-        self.socket = None
+        self.server_socket = None
+        self.client_socket = None
 
-    def connect(self):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((self.host, self.port))
-        print(f"Connected to {self.host}:{self.port}")
+    def start(self):
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen(1)
+        print(f"Waiting for connection on {self.host}:{self.port}...")
 
-    def receive_frames(self):
+        self.client_socket, address = self.server_socket.accept()
+        print(f"Connected to {address}")
+
+    def send_frames(self):
+        cap = cv2.VideoCapture(1)
+
         while True:
-            # Receive the data from the socket
-            data = self.socket.recv(4096)
-
-            # If no data received, break the loop
-            if not data:
+            ret, frame = cap.read()
+            if not ret:
                 break
 
-            # Convert the data to a cv2 frame
-            nparr = np.frombuffer(data, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            # Do some processing on the frame if needed
 
-            # Display the frame or do some processing on it
-            cv2.imshow('Received Frame', frame)
+            # Convert the frame to a byte string
+            retval, buffer = cv2.imencode('.jpg', frame)
+            data = buffer.tobytes()
 
-            # Wait for a key press to exit the program
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            # Send the frame over the network
+            self.client_socket.send(data)
 
-        cv2.destroyAllWindows()
-        self.socket.close()
+        cap.release()
+        self.client_socket.close()
+
+    def stop(self):
+        self.server_socket.close()
 
 if __name__ == '__main__':
-    client = VideoServer(HOST, PORT)
-    client.connect()
-    client.receive_frames()
+    server = VideoServer(HOST, PORT)
+    server.start()
+    server.send_frames()
+    server.stop()
