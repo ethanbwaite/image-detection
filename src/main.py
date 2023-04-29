@@ -66,17 +66,26 @@ def detect_objects(image):
         cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
         cv2.putText(image, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
 
-    cv2.imshow('Object Detection', image)
+    return image
 
 
 ##################################################
-
+inference = False
 while True:
     # Read a frame from the webcam
     ret, frame = cap.read()
-
+    image = frame
     # Detect objects in the frame using the YOLOv5 model
-    detect_objects(frame)
+    if inference:
+        image = detect_objects(frame)
+
+    cv2.imshow('Object Detection', image)
+
+    if cv2.waitKey(1) & 0xFF == ord('a'):
+        inference = True
+        
+    if cv2.waitKey(1) & 0xFF == ord('z'):
+        inference = False
 
     # Exit if 'q' pressed
     if cv2.waitKey(1) & 0xFF == ord('q'):
