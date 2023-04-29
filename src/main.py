@@ -1,9 +1,9 @@
 import cv2
 from transformers import YolosImageProcessor, YolosForObjectDetection 
-import socket
+import sys
 
 # Init webcam video capture
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(sys.argv[1])
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
@@ -29,7 +29,7 @@ def detect_objects(image):
     # Get original image dimensions for drawing boxes
     image_width, image_height, image_channels = image.shape
     print(image_width, image_height)
-    resized_width, resized_height = 1280, 720
+    resized_width, resized_height = 640, 360
     confidence_threshold = 0.8
     scale_factor_x = image_width / resized_width
     scale_factor_y = image_height / resized_height
