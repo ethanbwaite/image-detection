@@ -13,4 +13,4 @@ def select_camera():
     print("Could not find any camera. Exiting.")
     exit()
 
-select_camera
+select_camera()
