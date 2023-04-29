@@ -2,12 +2,17 @@ import cv2
 from transformers import YolosImageProcessor, YolosForObjectDetection 
 import sys
 
-# Init webcam video capture
-selected_camera = input(f"Enter the ID of the camera to use: ")\
+def init_camera(id):
+    cap = cv2.VideoCapture(int(id))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    return cap
 
-cap = cv2.VideoCapture(selected_camera)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+# Init webcam video capture
+selected_camera = input(f"Enter the ID of the camera to use: ")
+width = int(input(f"Enter video processing width: "))
+height = int(input(f"Enter video processing height: "))
+cap = init_camera(selected_camera)
 
 # Load the YOLOv5 object detection model from Hugging Face
 feature_extractor = YolosImageProcessor.from_pretrained('hustvl/yolos-tiny')
@@ -30,25 +35,20 @@ def interpolate_color(confidence, min_confidence=0.9, max_confidence=1.0):
 def detect_objects(image, should_detect_objects=True):
     image_width, image_height, image_channels = image.shape
     print(image_width, image_height)
-    resized_width, resized_height = 640, 360
+    resized_width, resized_height = 640, 320
     confidence_threshold = 0.8
     scale_factor_x = image_width / resized_width
     scale_factor_y = image_height / resized_height
 
+    resized_image = cv2.resize(image, (resized_width, resized_height))
+
     if should_detect_objects:
-        # Get original image dimensions for drawing boxes
-
-        # Resize the image to the input size of the YOLOv5 model
-        resized_image = cv2.resize(image, (resized_width, resized_height))
-
         # Convert the image to RGB format and pass it through the feature extractor
         inputs = feature_extractor(images=resized_image[:, :, ::-1], return_tensors="pt", image_size=(resized_width, resized_height))
 
         # Use the object detection model to make predictions on the input image
         outputs = model(**inputs)
-        results = feature_extractor.post_process_object_detection(outputs, threshold=confidence_threshold)[
-            0
-        ]
+        results = feature_extractor.post_process_object_detection(outputs, threshold=confidence_threshold)[0]
         for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
             box_rounded = [round(i, 2) for i in box.tolist()]
             label_text = model.config.id2label[label.item()]
@@ -65,11 +65,11 @@ def detect_objects(image, should_detect_objects=True):
             color = interpolate_color(score.item(), min_confidence=confidence_threshold)
             thickness = 2
 
-            cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
-            cv2.putText(image, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
-            return image
+            cv2.rectangle(resized_image, (x1, y1), (x2, y2), color, thickness)
+            cv2.putText(resized_image, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
+            return resized_image
 
-    return cv2.resize(image, (resized_width, resized_height))
+    return resized_image
 
 
 ##################################################
@@ -77,23 +77,24 @@ should_detect_objects = False
 while True:
     # Read a frame from the webcam
     ret, frame = cap.read()
-    image = frame
     # Detect objects in the frame using the YOLOv5 model
     if ret:
         image = detect_objects(frame, should_detect_objects)
-        cv2.imshow('Object Detection', image)
+        resized_image = cv2.resize(image, (1280, 720))
+        cv2.imshow('Object Detection', resized_image)
     else:
-        print("Error could not read frame.")
-
-    if cv2.waitKey(1) & 0xFF == ord('a'):
-        should_detect_objects = True
-
-    if cv2.waitKey(1) & 0xFF == ord('z'):
-        should_detect_objects = False
+        print("Error could not read frame. Trying to reinit camera")
+        cap = init_camera(selected_camera)
 
     # Exit if 'q' pressed
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    key = cv2.waitKey(1)
+    if key:
+        if key == ord('q'):
+            break
+        if key == ord('y'):
+            should_detect_objects = True
+        if key == ord('n'):
+            should_detect_objects = False
 
 # Release the video capture object and close the window
 cap.release()
