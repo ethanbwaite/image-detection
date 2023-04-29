@@ -81,10 +81,9 @@ while True:
     # Detect objects in the frame using the YOLOv5 model
     if ret:
         image = detect_objects(frame, should_detect_objects)
+        cv2.imshow('Object Detection', image)
     else:
         print("Error could not read frame.")
-
-    cv2.imshow('Object Detection', image)
 
     if cv2.waitKey(1) & 0xFF == ord('a'):
         should_detect_objects = True
