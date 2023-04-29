@@ -1,13 +1,11 @@
 import cv2
 from transformers import YolosImageProcessor, YolosForObjectDetection 
 import socket
-import pickle
-import socket
-import struct
-# # Init webcam video capture
-# cap = cv2.VideoCapture(0)
-# cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-# cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+# Init webcam video capture
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
 # Load the YOLOv5 object detection model from Hugging Face
 feature_extractor = YolosImageProcessor.from_pretrained('hustvl/yolos-tiny')
@@ -69,46 +67,11 @@ def detect_objects(image):
     cv2.imshow('Object Detection', image)
 
 
-
 ##################################################
 
-# Set up the socket
-HOST = '' # The IP address of the receiving computer
-PORT = 65432
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-print('Socket created')
-s.bind((HOST, PORT))
-print('Socket bind complete')
-s.listen(10)
-print('Socket now listening')
-
-conn, addr = s.accept()
-
-data = b'' ### CHANGED
-payload_size = struct.calcsize("L") ### CHANGED
-
-
 while True:
-    # Accept the connection and receive the data
-        # Retrieve message size
-    while len(data) < payload_size:
-        data += conn.recv(4096)
-
-    packed_msg_size = data[:payload_size]
-    data = data[payload_size:]
-    msg_size = struct.unpack("L", packed_msg_size)[0] ### CHANGED
-
-    # Retrieve all data based on message size
-    while len(data) < msg_size:
-        data += conn.recv(4096)
-
-    frame_data = data[:msg_size]
-    data = data[msg_size:]
-
-    # Extract frame
-    frame = pickle.loads(frame_data)
-    # Write the frame to the video file
-    out.write(frame)
+    # Read a frame from the webcam
+    ret, frame = cap.read()
 
     # Detect objects in the frame using the YOLOv5 model
     detect_objects(frame)
@@ -117,9 +80,6 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Release the video writer and close the socket
-out.release()
-conn.close()
-
-# Close the display window
+# Release the video capture object and close the window
+cap.release()
 cv2.destroyAllWindows()
