@@ -27,7 +27,7 @@ def interpolate_color(confidence, min_confidence=0.9, max_confidence=1.0):
     return (b, g, r)
 
 # Define the function to detect objects in an image using the YOLOv5 model
-def detect_objects(image, detect_objects=True):
+def detect_objects(image, should_detect_objects=True):
     image_width, image_height, image_channels = image.shape
     print(image_width, image_height)
     resized_width, resized_height = 640, 360
@@ -35,7 +35,7 @@ def detect_objects(image, detect_objects=True):
     scale_factor_x = image_width / resized_width
     scale_factor_y = image_height / resized_height
 
-    if detect_objects:
+    if should_detect_objects:
         # Get original image dimensions for drawing boxes
 
         # Resize the image to the input size of the YOLOv5 model
@@ -73,21 +73,21 @@ def detect_objects(image, detect_objects=True):
 
 
 ##################################################
-detect_objects = False
+should_detect_objects = False
 while True:
     # Read a frame from the webcam
     ret, frame = cap.read()
     image = frame
     # Detect objects in the frame using the YOLOv5 model
-    image = detect_objects(frame, detect_objects)
+    image = detect_objects(frame, should_detect_objects)
 
     cv2.imshow('Object Detection', image)
 
     if cv2.waitKey(1) & 0xFF == ord('a'):
-        detect_objects = True
+        should_detect_objects = True
 
     if cv2.waitKey(1) & 0xFF == ord('z'):
-        detect_objects = False
+        should_detect_objects = False
 
     # Exit if 'q' pressed
     if cv2.waitKey(1) & 0xFF == ord('q'):
