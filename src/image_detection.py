@@ -38,7 +38,7 @@ def interpolate_color(confidence, min_confidence=0.0, max_confidence=1.0):
 def detect_objects(image, should_detect_objects=True):
     image_width, image_height, image_channels = image.shape
     print(image_width, image_height)
-    resized_width, resized_height = 1920, 1080
+    resized_width, resized_height = 1280, 720
     confidence_threshold = 0.5
     scale_factor_x = image_width / resized_width
     scale_factor_y = image_height / resized_height
@@ -70,6 +70,5 @@ def detect_objects(image, should_detect_objects=True):
 
             cv2.rectangle(resized_image, (x1, y1), (x2, y2), color, thickness)
             cv2.putText(resized_image, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
-            return resized_image
 
     return resized_image
