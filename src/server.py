@@ -4,6 +4,7 @@ import socket
 import sys
 import pickle
 import struct
+import time
 
 
 HOST = '192.168.1.123' # Desktop IP
@@ -32,8 +33,14 @@ class VideoServer:
         cap.set(cv2.CAP_PROP_FPS, 30)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
         
+        period = 10 
+        tick = 0
+        total_time = 0
         while True:
+            
+            t0 = time.time()
             ret, frame = cap.read()
+            
             if not ret:
                 break
             # Serialize frame
@@ -44,6 +51,18 @@ class VideoServer:
 
             # Then data
             self.client_socket.sendall(message_size + data)
+
+            cv2.imshow('frame', frame)
+
+            # Calculate latency
+            t1 = time.time()
+            total_time += t1 - t0
+            
+            if tick > period:
+                tick = 0
+                print(f"Average latency per frame over {period} frames: [{total_time / period}ms]")
+                total_time = 0
+
 
 
         cap.release()
