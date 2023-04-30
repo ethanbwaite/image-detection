@@ -37,7 +37,6 @@ def interpolate_color(confidence, min_confidence=0.0, max_confidence=1.0):
 # Define the function to detect objects in an image using the YOLOv5 model
 def detect_objects(image, should_detect_objects=True):
     image_width, image_height, image_channels = image.shape
-    print(image_width, image_height)
     resized_width, resized_height = 1280, 720
     confidence_threshold = 0.5
     scale_factor_x = image_width / resized_width
@@ -63,7 +62,6 @@ def detect_objects(image, should_detect_objects=True):
             x1, y1, x2, y2 = box
             x1, y1 = int(x1 * resized_width), int(y1 * resized_height)
             x2, y2 = int(x2 * resized_width), int(y2 * resized_height)
-            print(x1, y1, x2, y2)
 
             color = interpolate_color(score.item(), min_confidence=confidence_threshold)
             thickness = 2

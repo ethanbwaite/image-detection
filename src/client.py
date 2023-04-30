@@ -4,6 +4,7 @@ import socket
 import pickle
 import struct
 import image_detection
+import time
 
 HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
@@ -20,7 +21,9 @@ class VideoClient:
         print(f"Connected to {self.host}:{self.port}")
 
     def receive_frames(self):
-
+        period = 10 
+        tick = 0
+        total_time = 0
         data = b'' ### CHANGED
         payload_size = struct.calcsize("L") ### CHANGED
         should_process_frame = False
@@ -42,9 +45,23 @@ class VideoClient:
             data = data[msg_size:] 
 
             # Extract frame
-            frame = pickle.loads(frame_data)
+            encoded_image_bytes = pickle.loads(frame_data)
+
+            encoded_image_array = np.frombuffer(encoded_image_bytes, dtype=np.uint8)
+            frame = cv2.imdecode(encoded_image_array, cv2.IMREAD_COLOR)
             
+            t0 = time.perf_counter()
             processed_frame = image_detection.detect_objects(frame, should_process_frame)
+
+            # Calculate latency
+            t1 = time.perf_counter()
+            total_time += t1 - t0
+            tick += 1
+            
+            if tick > period:
+                tick = 0
+                print(f"Average latency per frame over {period} frames: [{total_time / period}s]")
+                total_time = 0
 
             cv2.imshow('frame', processed_frame)
 

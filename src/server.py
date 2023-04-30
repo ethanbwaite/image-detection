@@ -5,10 +5,12 @@ import sys
 import pickle
 import struct
 import time
+import utils
 
 
 HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
+
 
 class VideoServer:
     def __init__(self, host, port):
@@ -40,11 +42,14 @@ class VideoServer:
             
             t0 = time.perf_counter()
             ret, frame = cap.read()
+
+            jpeg = cv2.imencode('.jpg', frame)
+            encoded_image_bytes = np.array(jpeg).tobytes()
             
             if not ret:
                 break
             # Serialize frame
-            data = pickle.dumps(frame)
+            data = pickle.dumps(encoded_image_bytes)
 
             # Send message length first
             message_size = struct.pack("L", len(data)) ### CHANGED
