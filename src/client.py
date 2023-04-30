@@ -3,6 +3,7 @@ import numpy as np
 import socket
 import pickle
 import struct
+import gzip
 
 HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
@@ -40,7 +41,7 @@ class VideoClient:
             data = data[msg_size:] 
 
             # Extract frame
-            frame = pickle.loads(frame_data)
+            frame = pickle.loads(gzip.decompress(frame_data))
 
             cv2.imshow('frame', frame)
  

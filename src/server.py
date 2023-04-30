@@ -4,6 +4,7 @@ import socket
 import sys
 import pickle
 import struct
+import gzip
 
 
 HOST = '192.168.1.123' # Desktop IP
@@ -33,7 +34,7 @@ class VideoServer:
             if not ret:
                 break
             # Serialize frame
-            data = pickle.dumps(frame)
+            data = gzip.compress(pickle.dumps(frame))
 
             # Send message length first
             message_size = struct.pack("L", len(data)) ### CHANGED
