@@ -1,7 +1,9 @@
 import random
 import string
+import util
 from constants import KNOWN_OBJECT_AGE, KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION
 
+log = util.get_logger()
 
 def generate_random_id():
     # Generate a random 4-digit ID
@@ -104,13 +106,22 @@ def track_object(known_objects,
 
     # Merge objects that are clearly too similar and likely tracking the same thing
     # In these cases, keep the older object
+    merged_removed_objects = set()
+
     for known_id_1, known_bbox_1 in known_objects.items():
         for known_id_2, known_bbox_2 in known_objects.items():
-            if overlap > merge_overlap_threshold and size_delta < merge_size_delta_threshold:
-                if known_object_metadata[known_id_1][KNOWN_OBJECT_AGE] > known_object_metadata[known_id_2][KNOWN_OBJECT_AGE]:
-                    non_continuous_objects.add(known_id_2)
-                else:
-                    non_continuous_objects.add(known_id_1)
+            if known_id_1 != known_id_2:
+                overlap = calculate_bbox_overlap(known_bbox_1, known_bbox_2)
+                size_delta = calculate_size_delta(known_bbox_1, known_bbox_2)
+
+                if overlap > merge_overlap_threshold and size_delta < merge_size_delta_threshold:
+                    if known_object_metadata[known_id_1][KNOWN_OBJECT_AGE] > known_object_metadata[known_id_2][KNOWN_OBJECT_AGE]:
+                        merged_removed_objects.add(known_id_2)
+                        log.info(f"Merged {known_id_2} into {known_id_1}")
+                    else:
+                        merged_removed_objects.add(known_id_1)
+                        log.info(f"Merged {known_id_1} into {known_id_2}")
+
 
     # Allow objects that have not been detected to persist so long as they are within a time threshold
     for object_id in non_continuous_objects:
@@ -120,7 +131,7 @@ def track_object(known_objects,
             non_continuous_objects_in_grace_period.add(object_id)
 
     non_continuous_objects = non_continuous_objects - non_continuous_objects_in_grace_period
-
+    non_continuous_objects = non_continuous_objects.union(merged_removed_objects)
     # Return the new set of known objects, minus any that we did not find a candidate for 
     # from the new frame 
     final_known_objects = {k: v for k, v in new_known_objects.items() if k not in non_continuous_objects}

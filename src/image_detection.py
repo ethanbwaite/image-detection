@@ -2,6 +2,7 @@ import cv2
 from transformers import YolosImageProcessor, YolosForObjectDetection, DetrImageProcessor, DetrForObjectDetection, AutoFeatureExtractor, AutoModelForObjectDetection
 import torch
 import util
+from constants import KNOWN_OBJECT_AGE
 
 log = util.get_logger()
 CONFIDENCE_THRESHOLD = 0.5
@@ -124,7 +125,7 @@ def draw_detected_objects(frame, results, greyscale=False):
 
 
 # Draw detected objects to a given frame based on metadata about the detected objects from the model
-def draw_known_objects(frame, known_objects):
+def draw_known_objects(frame, known_objects, known_object_metadata):
     width, height, _ = frame.shape
     for object_id, object_bbox in known_objects.items():
 
@@ -135,9 +136,10 @@ def draw_known_objects(frame, known_objects):
         color = (0, 255, 0)
         thickness = 2
         font_thickness = 1
+        label = f"{object_id}-age-{known_object_metadata[object_id][KNOWN_OBJECT_AGE]}"
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-        cv2.putText(frame, object_id, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, font_thickness)
+        cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, font_thickness)
         
 
     return frame

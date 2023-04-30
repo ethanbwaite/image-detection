@@ -30,9 +30,10 @@ class VideoClient:
 
 
     def receive_frames(self):
-        period = 10 
+        period = 30
         tick = 0
         total_time = 0
+        total_inference_time = 0
         data = b'' ### CHANGED
         payload_size = struct.calcsize("L") ### CHANGED
 
@@ -74,7 +75,9 @@ class VideoClient:
                 frame = pickle.loads(frame_data)
 
                 # Perform object detection
+                t2 = time.perf_counter()
                 processed_frame, frame_metadata = image_detection.detect_objects(frame, should_process_frame, should_log_detections)
+                t3 = time.perf_counter()
 
                 frame_history.append(frame_metadata)
                 if len(frame_history) > max_frames:
@@ -96,17 +99,23 @@ class VideoClient:
 
                     # Draw this frame's detections (on top of history)
                     # processed_frame = image_detection.draw_detected_objects(processed_frame, frame_metadata, greyscale=False)
-                    processed_frame = image_detection.draw_known_objects(frame=processed_frame, known_objects=known_objects)
+                    processed_frame = image_detection.draw_known_objects(frame=processed_frame, 
+                                                                         known_objects=known_objects,
+                                                                         known_object_metadata=known_object_metadata)
 
                 # Calculate latency
                 t1 = time.perf_counter()
                 total_time += t1 - t0
+                total_inference_time += t3 - t2
                 tick += 1
                 
                 if tick > period:
                     tick = 0
-                    log.info(f"Average latency per frame over {period} frames: [{total_time / period}s]")
+                    log.info(f"Average total latency over {period} frames: [{total_time / period}s]")
+                    log.info(f"Average inference latency over {period} frames: [{total_inference_time / period}s] ({round(total_inference_time/total_time, 3) * 100}% of total)")
+
                     total_time = 0
+                    total_inference_time = 0
 
                 cv2.imshow('frame', processed_frame)
 
