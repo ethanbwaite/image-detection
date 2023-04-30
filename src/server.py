@@ -42,13 +42,10 @@ class VideoServer:
             t0 = time.perf_counter()
             ret, frame = cap.read()
 
-            jpeg = cv2.imencode('.jpg', frame)
-            encoded_image_bytes = np.array(jpeg).tobytes()
-            
             if not ret:
                 break
             # Serialize frame
-            data = pickle.dumps(encoded_image_bytes)
+            data = pickle.dumps(frame)
 
             # Send message length first
             message_size = struct.pack("L", len(data)) ### CHANGED

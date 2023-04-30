@@ -45,10 +45,7 @@ class VideoClient:
             data = data[msg_size:] 
 
             # Extract frame
-            encoded_image_bytes = pickle.loads(frame_data)
-
-            encoded_image_array = np.frombuffer(encoded_image_bytes, dtype=np.uint8)
-            frame = cv2.imdecode(encoded_image_array, cv2.IMREAD_COLOR)
+            frame = pickle.loads(frame_data)
             
             t0 = time.perf_counter()
             processed_frame = image_detection.detect_objects(frame, should_process_frame)
