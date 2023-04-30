@@ -28,6 +28,9 @@ class VideoServer:
 
     def send_frames(self):
         cap = cv2.VideoCapture(1)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
 
         while True:
             ret, frame = cap.read()
@@ -52,5 +55,10 @@ class VideoServer:
 if __name__ == '__main__':
     server = VideoServer(HOST, PORT)
     server.start()
-    server.send_frames()
+    while True:
+        try:
+            server.send_frames()
+        except:
+            print("Restarting socket...")
+            server.start()
     server.stop()
