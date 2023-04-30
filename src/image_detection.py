@@ -13,8 +13,8 @@ else:
 
 # Load the YOLOv5 object detection model from Hugging Face
 print("Loading models...")
-feature_extractor = AutoFeatureExtractor.from_pretrained("hustvl/yolos-small")
-model = AutoModelForObjectDetection.from_pretrained("hustvl/yolos-small")
+feature_extractor = AutoFeatureExtractor.from_pretrained("facebook/detr-resnet-101")
+model = AutoModelForObjectDetection.from_pretrained("facebook/detr-resnet-101")
 
 # Move the models to GPU
 # feature_extractor.to(device)
