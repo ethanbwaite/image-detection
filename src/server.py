@@ -38,7 +38,7 @@ class VideoServer:
         total_time = 0
         while True:
             
-            t0 = time.time()
+            t0 = time.perf_counter()
             ret, frame = cap.read()
             
             if not ret:
@@ -52,15 +52,14 @@ class VideoServer:
             # Then data
             self.client_socket.sendall(message_size + data)
 
-            cv2.imshow('frame', frame)
-
             # Calculate latency
-            t1 = time.time()
+            t1 = time.perf_counter()
             total_time += t1 - t0
+            tick += 1
             
             if tick > period:
                 tick = 0
-                print(f"Average latency per frame over {period} frames: [{total_time / period}ms]")
+                print(f"Average latency per frame over {period} frames: [{total_time / period}s]")
                 total_time = 0
 
 
