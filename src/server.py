@@ -5,11 +5,13 @@ import sys
 import pickle
 import struct
 import time
+import util
 
 
 HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
 
+log = util.get_logger()
 
 class VideoServer:
     def __init__(self, host, port):
@@ -22,10 +24,10 @@ class VideoServer:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(1)
-        print(f"Waiting for connection on {self.host}:{self.port}...")
+        log.info(f"Waiting for connection on {self.host}:{self.port}...")
 
         self.client_socket, address = self.server_socket.accept()
-        print(f"Connected to {address}")
+        log.info(f"Connected to {address}")
 
     def send_frames(self):
         cap = cv2.VideoCapture(1)
@@ -60,7 +62,7 @@ class VideoServer:
             
             if tick > period:
                 tick = 0
-                print(f"Average latency per frame over {period} frames: [{total_time / period}s]")
+                log.info(f"METRIC: Average latency per frame over {period} frames: [{total_time / period}s]")
                 total_time = 0
 
 
@@ -78,6 +80,6 @@ if __name__ == '__main__':
         try:
             server.send_frames()
         except:
-            print("Restarting socket...")
+            log.error("Restarting socket...")
             server.start()
     server.stop()
