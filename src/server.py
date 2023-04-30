@@ -5,7 +5,6 @@ import sys
 import pickle
 import struct
 import time
-import utils
 
 
 HOST = '192.168.1.123' # Desktop IP
