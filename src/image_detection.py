@@ -79,13 +79,13 @@ def detect_objects(image, should_detect_objects=True, should_log_detections=Fals
 
             if label_text in labels_allowlist:
                 scores.append(score.item())
-                labels.append(label.item())
+                labels.append(label_text)
                 boxes.append(box.tolist())
-
-            print(
-                f"Detected {label_text} with confidence "
-                f"{round(score.item(), 3)} at location {box_rounded}"
-            )
+            if should_log_detections:
+                print(
+                    f"Detected {label_text} with confidence "
+                    f"{round(score.item(), 3)} at location {box_rounded}"
+                )
             
         results = {
             "scores": scores,
@@ -102,7 +102,6 @@ def draw_detected_objects(frame, results, greyscale=False):
         width, height, _ = frame.shape
 
         for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
-            label_text = model.config.id2label[label]
 
             [x1, y1, x2, y2] = box
             x1, y1 = int(x1 * height), int(y1 * width)
@@ -116,10 +115,10 @@ def draw_detected_objects(frame, results, greyscale=False):
                 color = (255, 255, 255) # rgb_to_gray(color)
                 thickness = 1
 
-            if label_text in labels_draw_rectangle_allowlist:
+            if label in labels_draw_rectangle_allowlist:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
                 if not greyscale:
-                    cv2.putText(frame, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, font_thickness)
+                    cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, font_thickness)
         
     return frame
 

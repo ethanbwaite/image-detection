@@ -1,5 +1,6 @@
 import random
 import string
+from constants import KNOWN_OBJECT_AGE, KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION
 
 
 def generate_random_id():
@@ -56,16 +57,22 @@ def calculate_size_delta(bbox1, bbox2):
     return abs(area2 - area1) / area1
 
 
-def track_object(known_objects, known_object_metadata, candidate_objects, overlap_threshold=0.5, size_delta_threshold=0.5):
+# Maintain a state of known objects based on the object bounding box data of the current frame.
+def track_object(known_objects, 
+                 known_object_metadata, 
+                 candidate_objects, 
+                 overlap_threshold=0.5, 
+                 size_delta_threshold=0.5, 
+                 time_since_last_detection_threshold=2,
+                 merge_overlap_threshold=0.95,
+                 merge_size_delta_threshold=0.05):
     new_known_objects = known_objects.copy()
     
     # Keep track of object IDs that have continued to exist in this frame
-    # Any that we did not find a candidate for we will remove 
+    # Any that we did not find a candidate for we will remove at the end
     continuous_object_ids = set()
 
-    for candidate_bbox in candidate_objects:
-        print(f"Candidate Objects: {len(candidate_objects)}")
-        print(f"Knonw Objects: {len(known_objects.items())}")
+    for candidate_label, candidate_bbox in candidate_objects:
 
         # Track if we found a new bbox for an existing object.
         # Otherwise we lost tracking and should remove it
@@ -74,18 +81,49 @@ def track_object(known_objects, known_object_metadata, candidate_objects, overla
             overlap = calculate_bbox_overlap(known_bbox, candidate_bbox)
             size_delta = calculate_size_delta(known_bbox, candidate_bbox)
 
+            # Known object detected
             # Assign known object to new location if we can reasonably say it is the same object
             if overlap > overlap_threshold and size_delta < size_delta_threshold:
                 continuous_object_ids.add(known_id)
                 new_known_objects[known_id] = candidate_bbox
+                known_object_metadata[known_id][KNOWN_OBJECT_AGE] += 1
+                known_object_metadata[known_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] = 0
                 found_object = True
         
+        # This is a new known object, add it to the set
         if not found_object:
-            # This is a new known object, add it to the set
-            new_known_objects[generate_random_id()] = candidate_bbox
+            new_id = f"{candidate_label}-{generate_random_id()}"
+            new_known_objects[new_id] = candidate_bbox
+            known_object_metadata[new_id] = {}
+            known_object_metadata[new_id][KNOWN_OBJECT_AGE] = 0
+            known_object_metadata[new_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] = 0
 
+    # Objects without a new mapping are candidates for removal from the state
     non_continuous_objects = known_objects.keys() - continuous_object_ids
+    non_continuous_objects_in_grace_period = set()
+
+    # Merge objects that are clearly too similar and likely tracking the same thing
+    # In these cases, keep the older object
+    for known_id_1, known_bbox_1 in known_objects.items():
+        for known_id_2, known_bbox_2 in known_objects.items():
+            if overlap > merge_overlap_threshold and size_delta < merge_size_delta_threshold:
+                if known_object_metadata[known_id_1][KNOWN_OBJECT_AGE] > known_object_metadata[known_id_2][KNOWN_OBJECT_AGE]:
+                    non_continuous_objects.add(known_id_2)
+                else:
+                    non_continuous_objects.add(known_id_1)
+
+    # Allow objects that have not been detected to persist so long as they are within a time threshold
+    for object_id in non_continuous_objects:
+        if known_object_metadata[object_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] < time_since_last_detection_threshold:
+            known_object_metadata[object_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] += 1
+            known_object_metadata[object_id][KNOWN_OBJECT_AGE] += 1
+            non_continuous_objects_in_grace_period.add(object_id)
+
+    non_continuous_objects = non_continuous_objects - non_continuous_objects_in_grace_period
 
     # Return the new set of known objects, minus any that we did not find a candidate for 
     # from the new frame 
-    return {k: v for k, v in new_known_objects.items() if k not in non_continuous_objects}
+    final_known_objects = {k: v for k, v in new_known_objects.items() if k not in non_continuous_objects}
+    final_known_object_metadata = {k: v for k, v in known_object_metadata.items() if k not in non_continuous_objects}
+
+    return final_known_objects, final_known_object_metadata

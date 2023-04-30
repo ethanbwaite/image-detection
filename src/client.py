@@ -84,9 +84,11 @@ class VideoClient:
                 if should_process_frame:
 
                     # Track objects
-                    known_objects = image_util.track_object(known_objects=known_objects, 
-                                                            known_object_metadata=known_object_metadata,
-                                                            candidate_objects=frame_metadata["boxes"])
+                    known_objects, known_object_metadata = image_util.track_object(
+                        known_objects=known_objects, 
+                        known_object_metadata=known_object_metadata,
+                        candidate_objects=zip(frame_metadata["labels"], frame_metadata["boxes"])
+                    )
 
                     # Draw historical tracking data
                     for past_frame_metadata in reversed(frame_history[:-1]):
