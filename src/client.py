@@ -23,6 +23,7 @@ class VideoClient:
 
         data = b'' ### CHANGED
         payload_size = struct.calcsize("L") ### CHANGED
+        should_process_frame = False
 
         while True:
             # Retrieve message size
@@ -43,13 +44,18 @@ class VideoClient:
             # Extract frame
             frame = pickle.loads(frame_data)
             
-            processed_frame = image_detection.detect_objects(frame)
+            processed_frame = image_detection.detect_objects(frame, should_process_frame)
 
             cv2.imshow('frame', processed_frame)
 
  
             # Wait for a key press to exit the program
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            key = cv2.waitKey(1)
+            if key == ord('y'):
+                should_process_frame = True
+            if key == ord('n'):
+                should_process_frame = False
+            if key == ord('q'):
                 break
 
         cv2.destroyAllWindows()
