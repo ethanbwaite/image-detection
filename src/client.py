@@ -1,8 +1,10 @@
 import cv2
 import numpy as np
 import socket
+import pickle
+import struct
 
-HOST = '136.27.22.160' # Desktop IP
+HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
 
 class VideoClient:
@@ -17,21 +19,31 @@ class VideoClient:
         print(f"Connected to {self.host}:{self.port}")
 
     def receive_frames(self):
+
+        data = b'' ### CHANGED
+        payload_size = struct.calcsize("L") ### CHANGED
+
         while True:
-            # Receive the data from the socket
-            data = self.socket.recv(4096)
+            # Retrieve message size
+            while len(data) < payload_size:
+                data += self.socket.recv(4096)
 
-            # If no data received, break the loop
-            if not data:
-                break
+            packed_msg_size = data[:payload_size]
+            data = data[payload_size:]
+            msg_size = struct.unpack("L", packed_msg_size)[0] ### CHANGED
 
-            # Convert the data to a cv2 frame
-            nparr = np.frombuffer(data, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            # Retrieve all data based on message size
+            while len(data) < msg_size:
+                data += self.socket.recv(4096)
 
-            # Display the frame or do some processing on it
-            cv2.imshow('Received Frame', frame)
+            frame_data = data[:msg_size]
+            data = data[msg_size:] 
 
+            # Extract frame
+            frame = pickle.loads(frame_data)
+
+            cv2.imshow('frame', frame)
+ 
             # Wait for a key press to exit the program
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break

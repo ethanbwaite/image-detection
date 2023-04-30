@@ -1,8 +1,12 @@
 import cv2
 import numpy as np
 import socket
+import sys
+import pickle
+import struct
 
-HOST = '136.27.22.160' # Desktop IP
+
+HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
 
 class VideoServer:
@@ -28,15 +32,15 @@ class VideoServer:
             ret, frame = cap.read()
             if not ret:
                 break
+            # Serialize frame
+            data = pickle.dumps(frame)
 
-            # Do some processing on the frame if needed
+            # Send message length first
+            message_size = struct.pack("L", len(data)) ### CHANGED
 
-            # Convert the frame to a byte string
-            retval, buffer = cv2.imencode('.jpg', frame)
-            data = buffer.tobytes()
+            # Then data
+            self.client_socket.sendall(message_size + data)
 
-            # Send the frame over the network
-            self.client_socket.send(data)
 
         cap.release()
         self.client_socket.close()
