@@ -24,3 +24,14 @@ def get_logger():
     logger.addHandler(stream_handler)
 
     return logger
+
+
+def add_history(current_history, new_record, max_history=10):
+    """
+    Adds an object to a history queue. Pops a value from the front if the max history
+    size is reached
+    """
+    current_history.append(new_record)
+    if len(current_history) > max_history:
+        current_history.pop(0)
+    return current_history

@@ -1,7 +1,10 @@
 import random
 import string
 import util
-from constants import KNOWN_OBJECT_AGE, KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION
+import numpy as np
+import cv2
+import colorsys
+from constants import KNOWN_OBJECT_AGE, KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION, KNOWN_OBJECT_HISTORY, KNOWN_OBJECT_COLOR, KNOWN_OBJECT_LABEL
 
 log = util.get_logger()
 
@@ -59,6 +62,61 @@ def calculate_size_delta(bbox1, bbox2):
     return abs(area2 - area1) / area1
 
 
+def get_centroid(box):
+    """
+    Returns the centroid of a bounding box given its coordinates.
+    
+    Parameters:
+        box (list): A list of four integers representing the bounding box coordinates in the format [xmin, ymin, xmax, ymax].
+        
+    Returns:
+        centroid (tuple): A tuple of two floating-point values representing the x and y coordinates of the centroid.
+    """
+    xmin, ymin, xmax, ymax = box
+    x = (xmin + xmax) / 2
+    y = (ymin + ymax) / 2
+    return (x, y)
+
+
+def generate_color():
+    """
+    Generates a random bright and happy color (no browns or muddy tones)
+    Returns: tuple of (b, g, r) color values
+    """
+    return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+
+
+def generate_saturated_color():
+    """
+    Generates a random, highly saturated (b, g, r) color in OpenCV.
+    """
+    hsv = np.array([[[np.random.randint(0, 180), 255, 255]]], dtype=np.uint8)
+    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)[0][0]
+    return (int(bgr[0]), int(bgr[1]), int(bgr[2]))
+
+
+def fade_to_white(color, percent):
+    """Fades a color to white by removing saturation.
+    
+    Args:
+        color (tuple): A tuple containing (b, g, r) values.
+        percent (float): A value between 0 and 1 indicating how much to fade the color.
+        
+    Returns:
+        tuple: A tuple containing the faded (b, g, r) values.
+    """
+    # Convert color to hsv
+    hsv_color = colorsys.rgb_to_hsv(*color)
+    
+    # Fade saturation to 0 over percent of the range
+    faded_hsv_color = (hsv_color[0], hsv_color[1] * (1 - percent), hsv_color[2])
+    
+    # Convert faded color back to (b, g, r)
+    faded_color = tuple(int(i * 255) for i in colorsys.hsv_to_rgb(*faded_hsv_color))
+    
+    return faded_color
+
+
 # Maintain a state of known objects based on the object bounding box data of the current frame.
 def track_object(known_objects, 
                  known_object_metadata, 
@@ -82,14 +140,24 @@ def track_object(known_objects,
         for known_id, known_bbox in known_objects.items():
             overlap = calculate_bbox_overlap(known_bbox, candidate_bbox)
             size_delta = calculate_size_delta(known_bbox, candidate_bbox)
-
+            is_same_class = known_object_metadata[known_id][KNOWN_OBJECT_LABEL] == candidate_label
+            
             # Known object detected
             # Assign known object to new location if we can reasonably say it is the same object
             if overlap > overlap_threshold and size_delta < size_delta_threshold:
+                # Continue tracking the object
                 continuous_object_ids.add(known_id)
                 new_known_objects[known_id] = candidate_bbox
+
+                # Update this known object's metadata
                 known_object_metadata[known_id][KNOWN_OBJECT_AGE] += 1
                 known_object_metadata[known_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] = 0
+                history = known_object_metadata[known_id][KNOWN_OBJECT_HISTORY].copy()
+                known_object_metadata[known_id][KNOWN_OBJECT_HISTORY] = util.add_history(
+                    history, 
+                    candidate_bbox,
+                    max_history=100
+                )
                 found_object = True
         
         # This is a new known object, add it to the set
@@ -97,8 +165,11 @@ def track_object(known_objects,
             new_id = f"{candidate_label}-{generate_random_id()}"
             new_known_objects[new_id] = candidate_bbox
             known_object_metadata[new_id] = {}
+            known_object_metadata[new_id][KNOWN_OBJECT_LABEL] = candidate_label
             known_object_metadata[new_id][KNOWN_OBJECT_AGE] = 0
             known_object_metadata[new_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] = 0
+            known_object_metadata[new_id][KNOWN_OBJECT_HISTORY] = []
+            known_object_metadata[new_id][KNOWN_OBJECT_COLOR] = generate_saturated_color()
 
     # Objects without a new mapping are candidates for removal from the state
     non_continuous_objects = known_objects.keys() - continuous_object_ids
@@ -117,10 +188,10 @@ def track_object(known_objects,
                 if overlap > merge_overlap_threshold and size_delta < merge_size_delta_threshold:
                     if known_object_metadata[known_id_1][KNOWN_OBJECT_AGE] > known_object_metadata[known_id_2][KNOWN_OBJECT_AGE]:
                         merged_removed_objects.add(known_id_2)
-                        log.info(f"Merged {known_id_2} into {known_id_1}")
+                        # log.info(f"Merged {known_id_2} into {known_id_1}")
                     else:
                         merged_removed_objects.add(known_id_1)
-                        log.info(f"Merged {known_id_1} into {known_id_2}")
+                        # log.info(f"Merged {known_id_1} into {known_id_2}")
 
 
     # Allow objects that have not been detected to persist so long as they are within a time threshold

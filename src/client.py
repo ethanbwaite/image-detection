@@ -7,6 +7,7 @@ import image_detection
 import time
 import util, image_util
 import traceback
+import base64
 
 HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
@@ -34,12 +35,16 @@ class VideoClient:
         tick = 0
         total_time = 0
         total_inference_time = 0
+        total_track_time = 0
         data = b'' ### CHANGED
         payload_size = struct.calcsize("L") ### CHANGED
 
         # Image detection config settings
         should_process_frame = True
         should_log_detections = False
+        should_draw_paths = False
+        should_draw_history = False
+
 
         # Keep track of past frames
         frame_history = []
@@ -72,60 +77,75 @@ class VideoClient:
                 data = data[msg_size:] 
 
                 # Extract frame
-                frame = pickle.loads(frame_data)
+                # frame = pickle.loads(frame_data)
+
+                # Testing new encoder
+                img = base64.b64decode(frame_data)
+                npimg = np.fromstring(img, dtype=np.uint8)
+                frame = cv2.imdecode(npimg, 1)
 
                 # Perform object detection
                 t2 = time.perf_counter()
                 processed_frame, frame_metadata = image_detection.detect_objects(frame, should_process_frame, should_log_detections)
                 t3 = time.perf_counter()
 
-                frame_history.append(frame_metadata)
-                if len(frame_history) > max_frames:
-                    frame_history.pop(0)
+                frame_history = util.add_history(frame_history, frame_metadata, max_history=10)
 
                 # Draw historical objects
                 if should_process_frame:
-
+                    t_track_0 = time.perf_counter()
                     # Track objects
                     known_objects, known_object_metadata = image_util.track_object(
                         known_objects=known_objects, 
                         known_object_metadata=known_object_metadata,
                         candidate_objects=zip(frame_metadata["labels"], frame_metadata["boxes"])
                     )
+                    t_track_1 = time.perf_counter()
 
                     # Draw historical tracking data
-                    for past_frame_metadata in reversed(frame_history[:-1]):
-                        processed_frame = image_detection.draw_detected_objects(processed_frame, past_frame_metadata, greyscale=True)
+                    if should_draw_history:
+                        for past_frame_metadata in reversed(frame_history[:-1]):
+                            processed_frame = image_detection.draw_detected_objects(processed_frame, past_frame_metadata, greyscale=True)
 
                     # Draw this frame's detections (on top of history)
                     # processed_frame = image_detection.draw_detected_objects(processed_frame, frame_metadata, greyscale=False)
                     processed_frame = image_detection.draw_known_objects(frame=processed_frame, 
                                                                          known_objects=known_objects,
-                                                                         known_object_metadata=known_object_metadata)
+                                                                         known_object_metadata=known_object_metadata,
+                                                                         draw_path=should_draw_paths)
 
                 # Calculate latency
                 t1 = time.perf_counter()
                 total_time += t1 - t0
                 total_inference_time += t3 - t2
+                total_track_time += t_track_1 - t_track_0
                 tick += 1
                 
                 if tick > period:
                     tick = 0
                     log.info(f"Average total latency over {period} frames: [{total_time / period}s]")
                     log.info(f"Average inference latency over {period} frames: [{total_inference_time / period}s] ({round(total_inference_time/total_time, 3) * 100}% of total)")
+                    log.info(f"Average tracking latency over {period} frames: [{total_track_time / period}s] ({round(total_track_time/total_time, 3) * 100}% of total)")
+                    log.info(f"Average FPS over {period} frames: [{period/total_time}s]")
+
 
                     total_time = 0
                     total_inference_time = 0
+                    total_track_time = 0
 
                 cv2.imshow('frame', processed_frame)
 
     
-                # Wait for a key press to exit the program
+                # Take user key input from the video frame
                 key = cv2.waitKey(1)
                 if key == ord('d'):
                     should_process_frame = not should_process_frame
                 if key == ord('l'):
                     should_log_detections = not should_log_detections
+                if key == ord('p'):
+                    should_draw_paths = not should_draw_paths
+                if key == ord('h'):
+                    should_draw_history = not should_draw_history
                 if key == ord('q'):
                     break
             except Exception as e:

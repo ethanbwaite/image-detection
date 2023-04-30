@@ -1,8 +1,8 @@
 import cv2
 from transformers import YolosImageProcessor, YolosForObjectDetection, DetrImageProcessor, DetrForObjectDetection, AutoFeatureExtractor, AutoModelForObjectDetection
 import torch
-import util
-from constants import KNOWN_OBJECT_AGE
+import util, image_util
+from constants import KNOWN_OBJECT_AGE, KNOWN_OBJECT_COLOR, KNOWN_OBJECT_HISTORY
 
 log = util.get_logger()
 CONFIDENCE_THRESHOLD = 0.5
@@ -125,7 +125,7 @@ def draw_detected_objects(frame, results, greyscale=False):
 
 
 # Draw detected objects to a given frame based on metadata about the detected objects from the model
-def draw_known_objects(frame, known_objects, known_object_metadata):
+def draw_known_objects(frame, known_objects, known_object_metadata, draw_path=False, draw_history=10):
     width, height, _ = frame.shape
     for object_id, object_bbox in known_objects.items():
 
@@ -133,13 +133,33 @@ def draw_known_objects(frame, known_objects, known_object_metadata):
         x1, y1 = int(x1 * height), int(y1 * width)
         x2, y2 = int(x2 * height), int(y2 * width)
 
-        color = (0, 255, 0)
+        color = known_object_metadata[object_id][KNOWN_OBJECT_COLOR]
         thickness = 2
         font_thickness = 1
         label = f"{object_id}-age-{known_object_metadata[object_id][KNOWN_OBJECT_AGE]}"
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-        cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, font_thickness)
+        cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), font_thickness + 1)
+        cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), font_thickness)
+
+        if draw_path:
+            path_count = 0
+            path_thickness = 3
+            last_point = None
+
+            for historical_bbox in known_object_metadata[object_id][KNOWN_OBJECT_HISTORY]:
+                [x1, y1, x2, y2] = historical_bbox
+                new_point = image_util.get_centroid((x1, y1, x2, y2))
+                (x, y) = new_point 
+                new_point = (int(x * height), int(y * width))
+
+                if last_point:
+                    cv2.line(frame, last_point, new_point, color, path_thickness)
+                last_point = new_point
+                path_count += 1
+                if path_count > draw_history:
+                    break
+
         
 
     return frame

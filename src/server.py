@@ -6,6 +6,7 @@ import pickle
 import struct
 import time
 import util
+import base64
 
 
 HOST = '192.168.1.123' # Desktop IP
@@ -47,7 +48,11 @@ class VideoServer:
             if not ret:
                 break
             # Serialize frame
-            data = pickle.dumps(frame)
+            # data = pickle.dumps(frame)
+
+            # Testing new encoder
+            encoded, buffer = cv2.imencode('.jpg', frame)
+            data = base64.b64encode(buffer)
 
             # Send message length first
             message_size = struct.pack("L", len(data)) ### CHANGED
