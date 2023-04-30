@@ -3,7 +3,7 @@ import numpy as np
 import socket
 import pickle
 import struct
-import io
+import image_detection
 
 HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
@@ -41,13 +41,12 @@ class VideoClient:
             data = data[msg_size:] 
 
             # Extract frame
-            if self.is_gzip_file_valid(frame_data):
+            frame = pickle.loads(frame_data)
+            
+            processed_frame = image_detection.detect_objects(frame)
 
-                frame = pickle.loads(frame_data)
+            cv2.imshow('frame', processed_frame)
 
-                cv2.imshow('frame', frame)
-            else:
-                print("bad gzip")
  
             # Wait for a key press to exit the program
             if cv2.waitKey(1) & 0xFF == ord('q'):

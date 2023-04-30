@@ -1,14 +1,29 @@
 import cv2
-from transformers import YolosImageProcessor, YolosForObjectDetection 
+from transformers import YolosImageProcessor, YolosForObjectDetection, DetrImageProcessor, DetrForObjectDetection, AutoFeatureExtractor, AutoModelForObjectDetection
+import torch
+
+# Check if GPU is available
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+    print('Using GPU for inference...')
+else:
+    device = torch.device('cpu')
+    print('Using CPU for inference...')
 
 
 # Load the YOLOv5 object detection model from Hugging Face
-feature_extractor = YolosImageProcessor.from_pretrained('hustvl/yolos-tiny')
-model = YolosForObjectDetection.from_pretrained('hustvl/yolos-tiny')
+print("Loading models...")
+feature_extractor = AutoFeatureExtractor.from_pretrained("hustvl/yolos-small")
+model = AutoModelForObjectDetection.from_pretrained("hustvl/yolos-small")
+
+# Move the models to GPU
+# feature_extractor.to(device)
+model.to(device)
+
 config = model.config
 labels_dict = config.id2label
 
-def interpolate_color(confidence, min_confidence=0.9, max_confidence=1.0):
+def interpolate_color(confidence, min_confidence=0.0, max_confidence=1.0):
     # Map confidence score to a value between 0 and 1
     normalized_confidence = max(0, min(1, (confidence - min_confidence) / (max_confidence - min_confidence)))
 
@@ -23,8 +38,8 @@ def interpolate_color(confidence, min_confidence=0.9, max_confidence=1.0):
 def detect_objects(image, should_detect_objects=True):
     image_width, image_height, image_channels = image.shape
     print(image_width, image_height)
-    resized_width, resized_height = 640, 320
-    confidence_threshold = 0.8
+    resized_width, resized_height = 1920, 1080
+    confidence_threshold = 0.5
     scale_factor_x = image_width / resized_width
     scale_factor_y = image_height / resized_height
 
@@ -32,7 +47,7 @@ def detect_objects(image, should_detect_objects=True):
 
     if should_detect_objects:
         # Convert the image to RGB format and pass it through the feature extractor
-        inputs = feature_extractor(images=resized_image[:, :, ::-1], return_tensors="pt", image_size=(resized_width, resized_height))
+        inputs = feature_extractor(images=resized_image[:, :, ::-1], return_tensors="pt", image_size=(resized_width, resized_height)).to(device)
 
         # Use the object detection model to make predictions on the input image
         outputs = model(**inputs)
