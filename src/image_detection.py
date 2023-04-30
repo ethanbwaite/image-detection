@@ -52,9 +52,9 @@ def rgb_to_gray(color):
 
 
 # Define the function to detect objects in an image using the YOLOv5 model
-def detect_objects(image, should_detect_objects=True, should_log_detections=False):
+def detect_objects(image, width, height, should_detect_objects=True, should_log_detections=False, ):
     image_width, image_height, image_channels = image.shape
-    resized_width, resized_height = 1280, 720
+    resized_width, resized_height = width, height
     
     scale_factor_x = image_width / resized_width
     scale_factor_y = image_height / resized_height
@@ -147,7 +147,7 @@ def draw_known_objects(frame, known_objects, known_object_metadata, draw_path=Fa
             path_thickness = 3
             last_point = None
 
-            for historical_bbox in known_object_metadata[object_id][KNOWN_OBJECT_HISTORY]:
+            for historical_bbox in known_object_metadata[object_id][KNOWN_OBJECT_HISTORY][-draw_history:]:
                 [x1, y1, x2, y2] = historical_bbox
                 new_point = image_util.get_centroid((x1, y1, x2, y2))
                 (x, y) = new_point 

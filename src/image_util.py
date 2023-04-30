@@ -4,6 +4,7 @@ import util
 import numpy as np
 import cv2
 import colorsys
+import shapely
 from constants import KNOWN_OBJECT_AGE, KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION, KNOWN_OBJECT_HISTORY, KNOWN_OBJECT_COLOR, KNOWN_OBJECT_LABEL
 
 log = util.get_logger()
@@ -62,6 +63,27 @@ def calculate_size_delta(bbox1, bbox2):
     return abs(area2 - area1) / area1
 
 
+def compare_rectangles(rect1, rect2):
+    """
+    Compares two rectangles by aspect ratio and size. 0 is the same 1 is completely different
+    """
+    # rect1 and rect2 are (x1, y1, x2, y2) bounding box coordinates of rectangles
+    
+    # Calculate width and height of rectangles
+    w1 = rect1[2] - rect1[0]
+    h1 = rect1[3] - rect1[1]
+    w2 = rect2[2] - rect2[0]
+    h2 = rect2[3] - rect2[1]
+    
+    # Calculate aspect ratios of rectangles
+    ar1 = w1 / h1
+    ar2 = w2 / h2
+    
+    # Calculate difference score based on aspect ratio and area
+    diff_score = abs(ar1 - ar2) + abs((w1 * h1) - (w2 * h2)) / ((w1 * h1) + (w2 * h2))
+    return diff_score
+
+
 def get_centroid(box):
     """
     Returns the centroid of a bounding box given its coordinates.
@@ -76,6 +98,35 @@ def get_centroid(box):
     x = (xmin + xmax) / 2
     y = (ymin + ymax) / 2
     return (x, y)
+
+
+def predict_next_point(previous_points, current_point, prediction_distance):
+    """
+    Given a list of points, predict the location of the next point in the path
+    """
+    # Get the last two points from the list
+    if len(previous_points) > 1:
+        last_point = previous_points[-1]
+        second_last_point = previous_points[-2]
+        
+        # Calculate the velocity between the last two points
+        velocity = np.array(last_point) - np.array(second_last_point)
+        
+        # Predict the next point based on the velocity and the prediction distance
+        predicted_point = np.array(last_point) + (velocity * prediction_distance)
+        
+        # Calculate the standard deviation of the velocities
+        velocity_std = np.std(np.array(previous_points[1:]) - np.array(previous_points[:-1]), axis=0)
+        
+        # Calculate the uncertainty ellipse dimensions based on the velocity std
+        ellipse_major_axis = np.linalg.norm(velocity_std) * prediction_distance
+        ellipse_minor_axis = np.linalg.norm(velocity) * prediction_distance
+        
+        # Return the predicted point and the uncertainty ellipse dimensions
+        return predicted_point.tolist(), ellipse_major_axis, ellipse_minor_axis
+    else:
+        # If there are not enough points to predict, return None
+        return None, None, None
 
 
 def generate_color():
@@ -122,7 +173,8 @@ def track_object(known_objects,
                  known_object_metadata, 
                  candidate_objects, 
                  overlap_threshold=0.5, 
-                 size_delta_threshold=0.5, 
+                 size_delta_threshold=0.75,
+                 rectangle_delta_threshold = 0.25,
                  time_since_last_detection_threshold=2,
                  merge_overlap_threshold=0.95,
                  merge_size_delta_threshold=0.05):
@@ -137,28 +189,40 @@ def track_object(known_objects,
         # Track if we found a new bbox for an existing object.
         # Otherwise we lost tracking and should remove it
         found_object = False
+        potential_matches = set()
+
         for known_id, known_bbox in known_objects.items():
             overlap = calculate_bbox_overlap(known_bbox, candidate_bbox)
             size_delta = calculate_size_delta(known_bbox, candidate_bbox)
+            rectangle_delta = compare_rectangles(known_bbox, candidate_bbox)
             is_same_class = known_object_metadata[known_id][KNOWN_OBJECT_LABEL] == candidate_label
             
             # Known object detected
-            # Assign known object to new location if we can reasonably say it is the same object
-            if overlap > overlap_threshold and size_delta < size_delta_threshold:
-                # Continue tracking the object
-                continuous_object_ids.add(known_id)
-                new_known_objects[known_id] = candidate_bbox
-
-                # Update this known object's metadata
-                known_object_metadata[known_id][KNOWN_OBJECT_AGE] += 1
-                known_object_metadata[known_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] = 0
-                history = known_object_metadata[known_id][KNOWN_OBJECT_HISTORY].copy()
-                known_object_metadata[known_id][KNOWN_OBJECT_HISTORY] = util.add_history(
-                    history, 
-                    candidate_bbox,
-                    max_history=100
-                )
+            # Add to list of candidates, we will choose the best candidate at the end
+            if rectangle_delta < rectangle_delta_threshold and overlap > overlap_threshold:
+                # Add to list of candidates, we will choose the best candidate at the end
+                potential_matches.add((known_id, (overlap, size_delta)))
                 found_object = True
+
+        if found_object:
+            # Choose the matched known object with the best scores
+            sort_matches_lambda = lambda x: (x[1][0], -x[1][1])
+            potential_matches = sorted(potential_matches, key=sort_matches_lambda)
+            best_match_id = potential_matches[0][0]
+
+            # Continue tracking the object
+            continuous_object_ids.add(best_match_id)
+            new_known_objects[best_match_id] = candidate_bbox
+
+            # Update this known object's metadata
+            known_object_metadata[best_match_id][KNOWN_OBJECT_AGE] += 1
+            known_object_metadata[best_match_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] = 0
+            history = known_object_metadata[best_match_id][KNOWN_OBJECT_HISTORY].copy()
+            known_object_metadata[best_match_id][KNOWN_OBJECT_HISTORY] = util.add_history(
+                history, 
+                candidate_bbox,
+                max_history=100
+            )
         
         # This is a new known object, add it to the set
         if not found_object:
@@ -209,3 +273,63 @@ def track_object(known_objects,
     final_known_object_metadata = {k: v for k, v in known_object_metadata.items() if k not in non_continuous_objects}
 
     return final_known_objects, final_known_object_metadata
+
+
+def has_crossed_path(path1, path2, n):
+    """
+    Detects if a path of n number of points has crossed another path of n points.
+
+    Args:
+    path1 (list): List of tuples representing the path of the first object.
+    path2 (list): List of tuples representing the path of the second object.
+    n (int): Number of points to consider for each path.
+
+    Returns:
+    bool: True if the two paths have crossed, False otherwise.
+    """
+
+    # Get the last n points of each path
+    path1 = path1[-n:]
+    path2 = path2[-n:]
+
+    line1 = None
+    line2 = None
+    # Check if any segment of path1 intersects with any segment of path2
+    for i in range(len(path1)-1):
+        for j in range(len(path2)-1):
+            line1 = shapely.LineString((path1[i], path1[i+1]))
+            line2 = shapely.LineString((path2[j], path2[j+1]))
+            if line1.intersects(line2):
+                return True
+
+    # If no segments intersect, return False
+    return False
+
+
+def detect_object_crossed_line(detection_line, 
+                                known_objects, 
+                                known_object_metadata, 
+                                tally_dict, 
+                                detected_object_id_set,
+                                width,
+                                height):
+
+    object_detected = False
+
+
+    for known_id, known_metadata in known_object_metadata.items():
+
+        # Construct the path from the centroids of each bounding box in the object's history
+        object_path = list(map(lambda bbox: get_centroid(bbox), known_metadata[KNOWN_OBJECT_HISTORY]))
+        object_path = list(map(lambda bbox: (int(bbox[0] * width), int(bbox[1] * height)), object_path))
+
+        # Add detected object to dict
+        if has_crossed_path(object_path, detection_line, 100):
+            object_detected = True
+            if known_id not in detected_object_id_set:
+                detected_object_id_set.add(known_id)
+                tally_dict[known_metadata[KNOWN_OBJECT_LABEL]] += 1
+
+    return tally_dict, detected_object_id_set, object_detected
+
+    
