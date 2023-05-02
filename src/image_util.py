@@ -6,12 +6,12 @@ import cv2
 import colorsys
 import shapely
 from constants import KNOWN_OBJECT_AGE, KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION, KNOWN_OBJECT_HISTORY, KNOWN_OBJECT_COLOR, KNOWN_OBJECT_LABEL
+from entities.known_object import KnownObject
+from util import generate_saturated_color
 
 log = util.get_logger()
 
-def generate_random_id():
-    # Generate a random 4-digit ID
-    return ''.join(random.choices(string.digits, k=4))
+
 
 
 def calculate_bbox_overlap(old_bbox, new_bbox):
@@ -137,15 +137,6 @@ def generate_color():
     return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
 
-def generate_saturated_color():
-    """
-    Generates a random, highly saturated (b, g, r) color in OpenCV.
-    """
-    hsv = np.array([[[np.random.randint(0, 180), 255, 255]]], dtype=np.uint8)
-    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)[0][0]
-    return (int(bgr[0]), int(bgr[1]), int(bgr[2]))
-
-
 def fade_to_white(color, percent):
     """Fades a color to white by removing saturation.
     
@@ -186,16 +177,17 @@ def track_object(known_objects,
 
     for candidate_label, candidate_bbox in candidate_objects:
 
-        # Track if we found a new bbox for an existing object.
-        # Otherwise we lost tracking and should remove it
+        # Try and find an existing object for the candidate
+        # If we can't find one, this is a new object to track
         found_object = False
         potential_matches = set()
 
-        for known_id, known_bbox in known_objects.items():
-            overlap = calculate_bbox_overlap(known_bbox, candidate_bbox)
-            size_delta = calculate_size_delta(known_bbox, candidate_bbox)
-            rectangle_delta = compare_rectangles(known_bbox, candidate_bbox)
-            is_same_class = known_object_metadata[known_id][KNOWN_OBJECT_LABEL] == candidate_label
+        # for known_id, known_bbox in known_objects.items():
+        for known_id, known_object in known_objects.items():
+            overlap = calculate_bbox_overlap(known_object.bbox, candidate_bbox)
+            size_delta = calculate_size_delta(known_object.bbox, candidate_bbox)
+            rectangle_delta = compare_rectangles(known_object.bbox, candidate_bbox)
+            is_same_class = known_object.label == candidate_label
             
             # Known object detected
             # Add to list of candidates, we will choose the best candidate at the end
@@ -206,34 +198,28 @@ def track_object(known_objects,
 
         if found_object:
             # Choose the matched known object with the best scores
+            # in this case, smallest rectangle delta and largest overlap threshold
             sort_matches_lambda = lambda x: (x[1][0], -x[1][1])
             potential_matches = sorted(potential_matches, key=sort_matches_lambda)
             best_match_id = potential_matches[0][0]
 
             # Continue tracking the object
-            continuous_object_ids.add(best_match_id)
-            new_known_objects[best_match_id] = candidate_bbox
-
             # Update this known object's metadata
-            known_object_metadata[best_match_id][KNOWN_OBJECT_AGE] += 1
-            known_object_metadata[best_match_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] = 0
-            history = known_object_metadata[best_match_id][KNOWN_OBJECT_HISTORY].copy()
-            known_object_metadata[best_match_id][KNOWN_OBJECT_HISTORY] = util.add_history(
-                history, 
-                candidate_bbox,
-                max_history=100
-            )
+            continuous_object_ids.add(best_match_id)
+
+            new_known_objects[best_match_id].age += 1
+            new_known_objects[best_match_id].time_since_last_detection = 0
+            new_known_objects[best_match_id].add_box(candidate_bbox)
+
         
         # This is a new known object, add it to the set
         if not found_object:
-            new_id = f"{candidate_label}-{generate_random_id()}"
-            new_known_objects[new_id] = candidate_bbox
-            known_object_metadata[new_id] = {}
-            known_object_metadata[new_id][KNOWN_OBJECT_LABEL] = candidate_label
-            known_object_metadata[new_id][KNOWN_OBJECT_AGE] = 0
-            known_object_metadata[new_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] = 0
-            known_object_metadata[new_id][KNOWN_OBJECT_HISTORY] = []
-            known_object_metadata[new_id][KNOWN_OBJECT_COLOR] = generate_saturated_color()
+
+            new_object = KnownObject(label=candidate_label,
+                                     bbox=candidate_bbox,
+                                     color=generate_saturated_color())
+            new_id = new_object.id
+            new_known_objects[new_id] = new_object
 
     # Objects without a new mapping are candidates for removal from the state
     non_continuous_objects = known_objects.keys() - continuous_object_ids
@@ -243,26 +229,24 @@ def track_object(known_objects,
     # In these cases, keep the older object
     merged_removed_objects = set()
 
-    for known_id_1, known_bbox_1 in known_objects.items():
-        for known_id_2, known_bbox_2 in known_objects.items():
+    for known_id_1, known_object_1 in known_objects.items():
+        for known_id_2, known_object_2 in known_objects.items():
             if known_id_1 != known_id_2:
-                overlap = calculate_bbox_overlap(known_bbox_1, known_bbox_2)
-                size_delta = calculate_size_delta(known_bbox_1, known_bbox_2)
+                overlap = calculate_bbox_overlap(known_object_1.bbox, known_object_2.bbox)
+                size_delta = calculate_size_delta(known_object_1.bbox, known_object_2.bbox)
 
                 if overlap > merge_overlap_threshold and size_delta < merge_size_delta_threshold:
-                    if known_object_metadata[known_id_1][KNOWN_OBJECT_AGE] > known_object_metadata[known_id_2][KNOWN_OBJECT_AGE]:
+                    if known_object_1.age > known_object_2.age:
                         merged_removed_objects.add(known_id_2)
-                        # log.info(f"Merged {known_id_2} into {known_id_1}")
                     else:
                         merged_removed_objects.add(known_id_1)
-                        # log.info(f"Merged {known_id_1} into {known_id_2}")
 
 
     # Allow objects that have not been detected to persist so long as they are within a time threshold
     for object_id in non_continuous_objects:
-        if known_object_metadata[object_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] < time_since_last_detection_threshold:
-            known_object_metadata[object_id][KNOWN_OBJECT_TIME_SINCE_LAST_DETECTION] += 1
-            known_object_metadata[object_id][KNOWN_OBJECT_AGE] += 1
+        if known_objects[object_id].time_since_last_detection < time_since_last_detection_threshold:
+            known_objects[object_id].time_since_last_detection += 1
+            known_objects[object_id].age += 1
             non_continuous_objects_in_grace_period.add(object_id)
 
     non_continuous_objects = non_continuous_objects - non_continuous_objects_in_grace_period
@@ -306,29 +290,35 @@ def has_crossed_path(path1, path2, n):
     return False
 
 
+def does_box_intersect_line(box_points, line):
+    line_string = shapely.LineString(line)
+    box_poly = shapely.box(*box_points)
+    return line_string.intersects(box_poly)
+
+
 def detect_object_crossed_line(detection_line, 
                                 known_objects, 
                                 known_object_metadata, 
                                 tally_dict, 
                                 detected_object_id_set,
                                 width,
-                                height):
+                                height,
+                                method='centroid'):
 
     object_detected = False
+    object_path = None
 
-
-    for known_id, known_metadata in known_object_metadata.items():
-
+    for known_id, known_object in known_objects.items():
         # Construct the path from the centroids of each bounding box in the object's history
-        object_path = list(map(lambda bbox: get_centroid(bbox), known_metadata[KNOWN_OBJECT_HISTORY]))
+        object_path = list(map(lambda bbox: get_centroid(bbox), known_object.history))
         object_path = list(map(lambda bbox: (int(bbox[0] * width), int(bbox[1] * height)), object_path))
-
         # Add detected object to dict
         if has_crossed_path(object_path, detection_line, 100):
             object_detected = True
             if known_id not in detected_object_id_set:
                 detected_object_id_set.add(known_id)
-                tally_dict[known_metadata[KNOWN_OBJECT_LABEL]] += 1
+                tally_dict[known_object.label] += 1
+            
 
     return tally_dict, detected_object_id_set, object_detected
 

@@ -9,13 +9,20 @@ import util, image_util
 import traceback
 import base64
 import shapely
+from pathlib import Path
 
 HOST = '192.168.1.123' # Desktop IP
 PORT = 8888
 WIDTH = 1280
 HEIGHT = 720
-SAVE_FILE_PERIOD = 30
-SAVE_FILE_NAME = "data/records.csv"
+SAVE_FILE_PERIOD = 10
+base_path = Path(__file__).parent
+SAVE_FILE_NAME = "records.csv"
+BOX_DETECTION_SAVE_FILE_NAME = "records-box.csv"
+
+SAVE_FILE_PATH = (base_path / f"../data/{SAVE_FILE_NAME}").resolve()
+
+BOX_DETECTION_SAVE_FILE_PATH = (base_path / f"../data/{BOX_DETECTION_SAVE_FILE_NAME}").resolve()
 
 log = util.get_logger()
 mouse_coords = (0, 0)
@@ -41,17 +48,15 @@ class VideoClient:
 
     # Create a mouse callback function
     def draw_mouse_coordinates(self, event, x, y, flags, param):
-        global mouse_coords, global_p0, global_p1, global_p2, global_p3
+        global mouse_coords, global_detection_paths
         if event == cv2.EVENT_MOUSEMOVE:
             # Convert the coordinates to a string and display it on the frame
             mouse_coords = (x, y)
         if event == cv2.EVENT_LBUTTONUP:
-            if global_p0 is None:
-                global_p0 = mouse_coords
-            elif global_p1 is None:
-                global_p1 = mouse_coords
-            else:
-                global_p0, global_p1 = None, None
+            global_detection_paths.append(mouse_coords)
+            log.info(f"Detection Line: {global_detection_paths}")
+        if event == cv2.EVENT_RBUTTONUP:
+            global_detection_paths = []
 
     def draw_annotations(self, frame, object_detected=False):
 
@@ -60,18 +65,17 @@ class VideoClient:
         cv2.putText(frame, "({}, {})".format(mouse_coords[0], mouse_coords[1]), mouse_coords, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         # Draw annotation lines
-        if global_p0:
-            cv2.putText(frame, "({}, {})".format(global_p0[0], global_p0[1]), global_p0, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-            cv2.putText(frame, "({}, {})".format(global_p0[0], global_p0[1]), global_p0, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        if len(global_detection_paths) > 1:
+            for i in range(len(global_detection_paths)-1):
+                p0 = global_detection_paths[i]
+                p1 = global_detection_paths[i+1]
+                cv2.line(frame, p0, p1, (0,255,0), 2)
 
-            # Draw annotation lines
-            if global_p1:
-                cv2.putText(frame, "({}, {})".format(global_p1[0], global_p1[1]), global_p1, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-                cv2.putText(frame, "({}, {})".format(global_p1[0], global_p1[1]), global_p1, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(frame, "({}, {})".format(p0[0], p0[1]), p0, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                cv2.putText(frame, "({}, {})".format(p0[0], p0[1]), p0, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-                # Draw detection line connecting annotation points
-                trigger_color = (0, 0, 255)
-                cv2.line(frame, global_p0, global_p1, trigger_color, 2)
+                cv2.putText(frame, "({}, {})".format(p1[0], p1[1]), p1, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                cv2.putText(frame, "({}, {})".format(p1[0], p1[1]), p1, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
                 
         return frame
 
@@ -82,8 +86,8 @@ class VideoClient:
         total_time = 0
         total_inference_time = 0
         total_track_time = 0
-        data = b'' ### CHANGED
-        payload_size = struct.calcsize("L") ### CHANGED
+        data = b''
+        payload_size = struct.calcsize("L")
 
         # Image detection config settings
         should_process_frame = True
@@ -96,7 +100,11 @@ class VideoClient:
         frame_history = []
         max_frames = 10
 
-        # Keep track of unique objects
+        """
+        Keep track of unique objects.
+        known_objects is a dictionary of unique object IDs to bounding box coordinates
+        in float form (each vector coordinate has range [0.0, 1.0])
+        """
         known_objects = {}
 
         # Keep track of metadata associated with a known object
@@ -105,13 +113,16 @@ class VideoClient:
 
         # Track objects that crossed the mouse defined line
         tallied_objects = {'person': 0, 'car': 0, 'motorcycle': 0, 'airplane': 0, 'bus': 0, 'truck': 0}
+        
         # Record unique objects so we don't double count them
         detected_object_id_set = set()
         
+        save_file_t0 = time.time()
 
         while True:
             try:
                 t0 = time.perf_counter()
+                
 
                 # Retrieve message size
                 while len(data) < payload_size:
@@ -161,18 +172,16 @@ class VideoClient:
                     )
                     t_track_1 = time.perf_counter()
 
-                    if global_p0 is not None and global_p1 is not None:
+                    if len(global_detection_paths) > 1:
                         tallied_objects,
                         detected_object_id_set, 
-                        object_detected = image_util.detect_object_crossed_line([global_p0, global_p1],             
+                        object_detected = image_util.detect_object_crossed_line(global_detection_paths,             
                                                                                 known_objects=known_objects,
                                                                                 known_object_metadata=known_object_metadata,
                                                                                 tally_dict=tallied_objects, 
                                                                                 detected_object_id_set=detected_object_id_set,
                                                                                 width=WIDTH,
                                                                                 height=HEIGHT)
-                        log.info(object_detected)
-
                     # Draw historical tracking data
                     if should_draw_history:
                         for past_frame_metadata in reversed(frame_history[:-1]):
@@ -194,10 +203,13 @@ class VideoClient:
                 tick += 1
 
                 # Write records dict to CSV file every period
-                if tick > SAVE_FILE_PERIOD:
-                    util.write_dict_to_csv_with_timestamp(tallied_objects, SAVE_FILE_NAME)
+                if (time.time() - save_file_t0) > SAVE_FILE_PERIOD:
+                    save_file_t0 = time.time()
+                    util.write_dict_to_csv_with_timestamp(tallied_objects, SAVE_FILE_PATH)
+                    log.info(f"Records {tallied_objects} saved to {SAVE_FILE_PATH}")
                     util.zero_out_dict_values(tallied_objects)
-                    log.info(f"Records saved to {SAVE_FILE_NAME}")
+
+
                 
                 if tick > period:
                     tick = 0
@@ -205,7 +217,6 @@ class VideoClient:
                     log.info(f"Average inference latency over {period} frames: [{total_inference_time / period}s] ({round(total_inference_time/total_time, 3) * 100}% of total)")
                     log.info(f"Average tracking latency over {period} frames: [{total_track_time / period}s] ({round(total_track_time/total_time, 3) * 100}% of total)")
                     log.info(f"Average FPS over {period} frames: [{period/total_time}]")
-
 
                     total_time = 0
                     total_inference_time = 0

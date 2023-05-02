@@ -2,6 +2,8 @@ import logging
 import sys
 import csv
 import time
+import numpy as np
+import cv2
 
 def get_logger():
     # Create a logger
@@ -43,16 +45,18 @@ def write_dict_to_csv_with_timestamp(dict_to_write, filename):
     """
     Writes a dictionary to CSV with a timestamp column
     """
-    with open(filename, mode='a', newline='') as csv_file:
+    with open(filename, mode='r+', newline='') as csv_file:
         fieldnames = list(dict_to_write.keys())
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames + ['timestamp'])
 
         # Write header row if file is empty
         csv_file.seek(0)
         first_char = csv_file.read(1)
         if not first_char:
             writer.writeheader()
-
+    
+    with open(filename, mode='a', newline='') as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames + ['timestamp'])
         # Write data row with timestamp
         dict_to_write['timestamp'] = time.time()
         writer.writerow(dict_to_write)
@@ -62,3 +66,12 @@ def zero_out_dict_values(d):
     """Set all values of a dictionary to zero."""
     for key in d:
         d[key] = 0
+
+
+def generate_saturated_color():
+    """
+    Generates a random, highly saturated (b, g, r) color in OpenCV.
+    """
+    hsv = np.array([[[np.random.randint(0, 180), 255, 255]]], dtype=np.uint8)
+    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)[0][0]
+    return (int(bgr[0]), int(bgr[1]), int(bgr[2]))

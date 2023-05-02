@@ -127,16 +127,15 @@ def draw_detected_objects(frame, results, greyscale=False):
 # Draw detected objects to a given frame based on metadata about the detected objects from the model
 def draw_known_objects(frame, known_objects, known_object_metadata, draw_path=False, draw_history=10):
     width, height, _ = frame.shape
-    for object_id, object_bbox in known_objects.items():
-
-        [x1, y1, x2, y2] = object_bbox
+    for object_id, known_object in known_objects.items():
+        [x1, y1, x2, y2] = known_object.bbox
         x1, y1 = int(x1 * height), int(y1 * width)
         x2, y2 = int(x2 * height), int(y2 * width)
 
-        color = known_object_metadata[object_id][KNOWN_OBJECT_COLOR]
+        color = known_object.color
         thickness = 2
         font_thickness = 1
-        label = f"{object_id}-age-{known_object_metadata[object_id][KNOWN_OBJECT_AGE]}"
+        label = f"{known_object.label}{object_id}-age-{known_object.age}"
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
         cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), font_thickness + 1)
@@ -145,9 +144,10 @@ def draw_known_objects(frame, known_objects, known_object_metadata, draw_path=Fa
         if draw_path:
             path_count = 0
             path_thickness = 3
-            last_point = None
+            new_point, last_point = None, None
 
-            for historical_bbox in known_object_metadata[object_id][KNOWN_OBJECT_HISTORY][-draw_history:]:
+
+            for historical_bbox in known_object.history[-draw_history:]:
                 [x1, y1, x2, y2] = historical_bbox
                 new_point = image_util.get_centroid((x1, y1, x2, y2))
                 (x, y) = new_point 
